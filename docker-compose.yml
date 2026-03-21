@@ -1,0 +1,76 @@
+version: '3.8'
+
+services:
+  cohort-analysis:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: cohort-retention-analysis
+    
+    # Run in scheduled mode (daily at 7am UTC)
+    environment:
+      - RUN_MODE=scheduled
+      - GOOGLE_CREDENTIALS_FILE=/app/credentials.json
+      - INPUT_SHEET_ID=${INPUT_SHEET_ID}
+      - OUTPUT_SHEET_ID=${OUTPUT_SHEET_ID}
+      - TZ=UTC
+    
+    # Mount credentials file
+    volumes:
+      - ./credentials.json:/app/credentials.json:ro
+      - ./logs:/app/logs
+    
+    # Resource limits
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 512M
+        reservations:
+          cpus: '0.5'
+          memory: 256M
+    
+    # Restart policy
+    restart: unless-stopped
+    
+    # Health check
+    healthcheck:
+      test: ["CMD", "python", "-c", "import os; print('OK' if os.path.exists('/app/credentials.json') else 'FAIL')"]
+      interval: 5m
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    
+    # Logging configuration
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # Optional: Separate service for manual/one-time execution
+  cohort-analysis-once:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: cohort-retention-analysis-once
+    
+    environment:
+      - RUN_MODE=once
+      - GOOGLE_CREDENTIALS_FILE=/app/credentials.json
+      - INPUT_SHEET_ID=${INPUT_SHEET_ID}
+      - OUTPUT_SHEET_ID=${OUTPUT_SHEET_ID}
+    
+    volumes:
+      - ./credentials.json:/app/credentials.json:ro
+      - ./logs:/app/logs
+    
+    # Don't start by default - use 'docker-compose run cohort-analysis-once' to execute
+    profiles:
+      - manual
+    
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
