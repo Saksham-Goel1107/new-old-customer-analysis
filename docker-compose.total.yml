@@ -1,0 +1,28 @@
+version: '3.8'
+services:
+  total-customer-analysis:
+    build:
+      context: .
+      dockerfile: Dockerfile.total
+    container_name: total-customer-analysis
+    environment:
+      - RUN_MODE=scheduled
+      - GOOGLE_CREDENTIALS_FILE=/app/credentials.json
+      - INPUT_SHEET_ID=${INPUT_SHEET_ID}
+      - INPUT_SHEET_NAME=${INPUT_SHEET_NAME}
+      - OUTPUT_SHEET_ID=${OUTPUT_SHEET_ID}
+    volumes:
+      - ./service.json:/app/credentials.json:ro
+      - ./logs:/app/logs
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "test", "-f", "/app/credentials.json"]
+      interval: 5m
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"

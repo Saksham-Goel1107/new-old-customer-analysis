@@ -58,3 +58,4 @@ monthly_retention_cohort.xlsx
 # OS
 .DS_Store
 Thumbs.db
+.env.total
