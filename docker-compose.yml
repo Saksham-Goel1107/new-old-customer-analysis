@@ -80,6 +80,8 @@ services:
       context: .
       dockerfile: Dockerfile.total
     container_name: total-customer-analysis
+    env_file:
+      - .env.total
     environment:
       - RUN_MODE=scheduled
       - GOOGLE_CREDENTIALS_FILE=/app/credentials.json
@@ -108,6 +110,8 @@ services:
       context: .
       dockerfile: Dockerfile.total
     container_name: total-customer-analysis-once
+    env_file:
+      - .env.total
     environment:
       - RUN_MODE=once
       - GOOGLE_CREDENTIALS_FILE=/app/credentials.json
