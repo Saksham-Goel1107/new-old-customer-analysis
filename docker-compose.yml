@@ -17,7 +17,7 @@ services:
     
     # Mount credentials file
     volumes:
-      - ./credentials.json:/app/credentials.json:ro
+      - ./service.json:/app/credentials.json:ro
       - ./logs:/app/logs
     
     # Resource limits
@@ -62,7 +62,7 @@ services:
       - OUTPUT_SHEET_ID=${OUTPUT_SHEET_ID}
     
     volumes:
-      - ./credentials.json:/app/credentials.json:ro
+      - ./service.json:/app/credentials.json:ro
       - ./logs:/app/logs
     
     # Don't start by default - use 'docker-compose run cohort-analysis-once' to execute
@@ -85,9 +85,6 @@ services:
     environment:
       - RUN_MODE=scheduled
       - GOOGLE_CREDENTIALS_FILE=/app/credentials.json
-      - INPUT_SHEET_ID=${TOTAL_INPUT_SHEET_ID}
-      - INPUT_SHEET_NAME=${TOTAL_INPUT_SHEET_NAME}
-      - OUTPUT_SHEET_ID=${TOTAL_OUTPUT_SHEET_ID}
       - TZ=UTC
     volumes:
       - ./service.json:/app/credentials.json:ro
@@ -115,9 +112,7 @@ services:
     environment:
       - RUN_MODE=once
       - GOOGLE_CREDENTIALS_FILE=/app/credentials.json
-      - INPUT_SHEET_ID=${TOTAL_INPUT_SHEET_ID}
-      - INPUT_SHEET_NAME=${TOTAL_INPUT_SHEET_NAME}
-      - OUTPUT_SHEET_ID=${TOTAL_OUTPUT_SHEET_ID}
+      - TZ=UTC
     volumes:
       - ./service.json:/app/credentials.json:ro
       - ./logs:/app/logs
