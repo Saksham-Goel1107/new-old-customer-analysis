@@ -6,6 +6,7 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 COPY total_analysis.py .
 COPY total_app.py .
+COPY sheets_utils.py .
 RUN useradd -m -u 1000 appuser && chown -R appuser:appuser /app
 USER appuser
 HEALTHCHECK --interval=300s --timeout=10s --start-period=10s --retries=3 CMD test -f /app/credentials.json || exit 1

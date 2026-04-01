@@ -17,6 +17,7 @@ from datetime import datetime
 import logging
 from google.oauth2.service_account import Credentials
 import gspread
+from sheets_utils import open_spreadsheet, ensure_worksheet, clear_worksheet, append_rows
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
@@ -47,7 +48,7 @@ def dataframe_to_sheets_format(df: pd.DataFrame):
 
 
 class TotalCustomerAnalysis:
-    def __init__(self, credentials_file, input_sheet_id, input_sheet_name='Sales Data'):
+    def __init__(self, credentials_file, input_sheet_id, input_sheet_name='main'):
         scope = [
             "https://www.googleapis.com/auth/spreadsheets",
             "https://www.googleapis.com/auth/drive",
@@ -59,8 +60,20 @@ class TotalCustomerAnalysis:
 
     def load_data_from_sheets(self):
         logger.info("Opening input sheet: %s", self.input_sheet_id)
-        sh = self.gc.open_by_key(self.input_sheet_id)
-        ws = sh.worksheet(self.input_sheet_name)
+        sh = open_spreadsheet(self.gc, self.input_sheet_id)
+        try:
+            ws = sh.worksheet(self.input_sheet_name)
+        except Exception as e:
+            from gspread.exceptions import WorksheetNotFound
+            if isinstance(e, WorksheetNotFound):
+                titles = [w.title for w in sh.worksheets()]
+                logger.warning("Worksheet '%s' not found. Available sheets: %s. Falling back to first sheet.", self.input_sheet_name, titles)
+                if not titles:
+                    raise
+                ws = sh.worksheet(titles[0])
+            else:
+                raise
+
         data = ws.get_all_records()
         logger.info("Loaded %d rows", len(data))
         df = pd.DataFrame(data)
@@ -204,7 +217,7 @@ class TotalCustomerAnalysis:
 
     def write_results_to_sheets(self, output_sheet_id, comp_df, mom_df, matrix_df, pct_df, summary_df):
         logger.info('Opening output sheet: %s', output_sheet_id)
-        out = self.gc.open_by_key(output_sheet_id)
+        out = open_spreadsheet(self.gc, output_sheet_id)
         sheets_to_write = {
             'Monthly Composition': comp_df,
             'MoM Retention': mom_df,
@@ -212,17 +225,21 @@ class TotalCustomerAnalysis:
             'Matrix %': pct_df,
             'Combined Summary': summary_df,
         }
-        existing = {s.title for s in out.worksheets()}
-        for name in sheets_to_write:
-            if name not in existing:
-                logger.info('Creating sheet: %s', name)
-                out.add_worksheet(title=name, rows=1, cols=1)
+
+        # Ensure sheets exist
+        for name, df in sheets_to_write.items():
+            logger.info('Ensuring sheet exists: %s', name)
+            rows = max(10, len(df) + 5) if hasattr(df, '__len__') else 1000
+            cols = max(5, len(df.columns)) if hasattr(df, 'columns') else 10
+            ensure_worksheet(out, name, rows=rows, cols=cols)
+
+        # Write with retry/backoff
         for name, df in sheets_to_write.items():
             logger.info('Writing to sheet: %s', name)
-            ws = out.worksheet(name)
-            ws.clear()
+            ws = ensure_worksheet(out, name, rows=max(10, len(df) + 5), cols=max(5, len(df.columns)))
+            clear_worksheet(ws)
             data = dataframe_to_sheets_format(df)
-            ws.append_rows(data, value_input_option='USER_ENTERED')
+            append_rows(ws, data, value_input_option='USER_ENTERED')
         logger.info('✅ Results written to output sheet')
 
     def run(self, output_sheet_id):

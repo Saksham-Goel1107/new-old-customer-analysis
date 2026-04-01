@@ -11,6 +11,7 @@ from google.auth.transport.requests import Request
 import gspread
 import logging
 from io import StringIO
+from sheets_utils import open_spreadsheet, ensure_worksheet, clear_worksheet, append_rows
 
 # Configure logging
 logging.basicConfig(
@@ -21,7 +22,7 @@ logger = logging.getLogger(__name__)
 
 
 class CohortAnalysis:
-    def __init__(self, credentials_file, input_sheet_id, input_sheet_name="Sales Data"):
+    def __init__(self, credentials_file, input_sheet_id, input_sheet_name="main"):
         """
         Initialize the cohort analysis with Google Sheets credentials
         
@@ -51,9 +52,20 @@ class CohortAnalysis:
         """Load sales data from Google Sheets"""
         try:
             logger.info(f"Opening sheet: {self.input_sheet_id}")
-            worksheet = self.gc.open_by_key(self.input_sheet_id)
-            sheet = worksheet.worksheet(self.input_sheet_name)
-            
+            worksheet = open_spreadsheet(self.gc, self.input_sheet_id)
+            try:
+                sheet = worksheet.worksheet(self.input_sheet_name)
+            except Exception as e:
+                from gspread.exceptions import WorksheetNotFound
+                if isinstance(e, WorksheetNotFound):
+                    titles = [w.title for w in worksheet.worksheets()]
+                    logger.warning("Worksheet '%s' not found. Available sheets: %s. Falling back to first sheet.", self.input_sheet_name, titles)
+                    if not titles:
+                        raise
+                    sheet = worksheet.worksheet(titles[0])
+                else:
+                    raise
+
             # Get all values
             data = sheet.get_all_records()
             logger.info(f"Loaded {len(data)} rows from Google Sheets")
@@ -337,34 +349,29 @@ class CohortAnalysis:
         """Write results to Google Sheets, creating/clearing sheets as needed"""
         try:
             logger.info(f"Opening output sheet: {output_sheet_id}")
-            worksheet = self.gc.open_by_key(output_sheet_id)
-            
+            worksheet = open_spreadsheet(self.gc, output_sheet_id)
+
             sheets_to_create = {
                 'Counts Matrix': matrix_df,
                 'Retention % Matrix': pct_df,
                 'Flat View': flat_df,
                 'Summary': summary_df
             }
-            
-            existing_sheets = {sheet.title for sheet in worksheet.worksheets()}
-            
-            # Create missing sheets
-            for sheet_name in sheets_to_create.keys():
-                if sheet_name not in existing_sheets:
-                    logger.info(f"Creating sheet: {sheet_name}")
-                    worksheet.add_worksheet(title=sheet_name, rows=1, cols=1)
-            
-            # Write data to sheets
+
+            # Ensure sheets exist (create if missing) and then write with retries
+            for sheet_name, df in sheets_to_create.items():
+                logger.info(f"Ensuring sheet exists: {sheet_name}")
+                rows = max(10, len(df) + 5) if hasattr(df, '__len__') else 1000
+                cols = max(5, len(df.columns)) if hasattr(df, 'columns') else 10
+                ensure_worksheet(worksheet, sheet_name, rows=rows, cols=cols)
+
+            # Write data to sheets with robust retry/backoff
             for sheet_name, df in sheets_to_create.items():
                 logger.info(f"Writing to sheet: {sheet_name}")
-                sheet = worksheet.worksheet(sheet_name)
-                
-                # Clear existing content
-                sheet.clear()
-                
-                # Convert and write
+                sheet = ensure_worksheet(worksheet, sheet_name, rows=max(10, len(df) + 5), cols=max(5, len(df.columns)))
+                clear_worksheet(sheet)
                 data = self.dataframe_to_sheets_format(df)
-                sheet.append_rows(data, value_input_option='USER_ENTERED')
+                append_rows(sheet, data, value_input_option='USER_ENTERED')
             
             logger.info("✅ Results successfully written to Google Sheets")
             
