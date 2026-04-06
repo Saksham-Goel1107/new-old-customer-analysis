@@ -8,4 +8,4 @@ google-auth==2.26.2
 google-api-python-client==2.108.0
 APScheduler==3.10.4
 python-dotenv==1.0.0
-requests==2.31.0
+requests==2.33.0
